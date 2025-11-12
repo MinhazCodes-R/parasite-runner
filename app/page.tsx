@@ -355,7 +355,7 @@ export default function GamePage() {
         ctx.fillStyle = "#FFFFFF"
         ctx.font = "bold 48px Arial"
         ctx.textAlign = "center"
-        ctx.fillText("PARASITE RUNNER", canvas.width / 2, canvas.height / 2 - 60)
+        ctx.fillText("VIRUS RUNNER", canvas.width / 2, canvas.height / 2 - 60)
 
         ctx.font = "24px Arial"
         ctx.fillText("Reach the hospital in 30 seconds!", canvas.width / 2, canvas.height / 2) // Updated menu text to reflect 30 second timer
@@ -406,7 +406,7 @@ export default function GamePage() {
   return (
     <main className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-green-50">
       <div className="flex flex-col items-center gap-4">
-        <h1 className="text-4xl font-bold text-gray-800">🧬 Parasite Runner</h1>
+        <h1 className="text-4xl font-bold text-gray-800">🧬 Virus Runner</h1>
         <canvas
           ref={canvasRef}
           width={800}
@@ -414,7 +414,7 @@ export default function GamePage() {
           className="border-4 border-gray-800 rounded-lg shadow-lg bg-sky-300 cursor-pointer"
         />
         <div className="text-center text-gray-700">
-          <p className="text-lg font-semibold">Avoid the parasites and reach the hospital!</p>
+          <p className="text-lg font-semibold">Avoid the viruses and reach the hospital!</p>
           <p className="text-sm">Press SPACE to jump • Reach the hospital within 30 seconds to win</p>{" "}
           {/* Updated instructions to reflect 30 second timer */}
         </div>
