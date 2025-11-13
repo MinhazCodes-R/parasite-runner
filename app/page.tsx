@@ -185,10 +185,10 @@ export default function GamePage() {
     const keys: { [key: string]: boolean } = {}
     const handleKeyDown = (e: KeyboardEvent) => {
       keys[e.code] = true
-      if (e.code === "Space" && gameState === "playing") {
+        if (e.code === "Space" && gameState === "playing") {
         e.preventDefault()
         if (!game.isJumping) {
-          game.velocityY = JUMP_STRENGTH
+          game.player.velocityY = JUMP_STRENGTH
           game.isJumping = true
         }
       }
@@ -201,15 +201,18 @@ export default function GamePage() {
     window.addEventListener("keydown", handleKeyDown)
     window.addEventListener("keyup", handleKeyUp)
 
-    const TARGET_FPS = 60;                       // ← CHANGE FRAMERATE HERE
-    const FRAME_DURATION = 1000 / (TARGET_FPS);    // e.g., 33ms for 30 FPS
+  const TARGET_FPS = 60 // ← CHANGE FRAMERATE HERE
+  const FRAME_DURATION = 1000 / TARGET_FPS // ms per frame (e.g., ~16.67ms for 60 FPS)
+  // LAND_SPEED multiplies all ground/land movement: parallax, parasite speed and
+  // the player's movement toward the hospital. Increase >1 to speed up land motion.
+  const LAND_SPEED = 1.9 // try 1.2 - 2.0 depending on desired speed
 
     // Mouse click for menu
     const handleCanvasClick = () => {
       if (gameState === "menu") {
         setGameState("playing")
         startTimeRef.current = Date.now()
-        setTimeLeft(30) // Updated initial time to 30 seconds
+  setTimeLeft(30) // Updated initial time to 30 seconds
         setScore(0)
         game.lives = 3
         game.score = 0
@@ -217,7 +220,7 @@ export default function GamePage() {
         game.parasites = []
         game.player.x = 100
         game.player.y = GROUND_Y
-        game.velocityY = 0
+  game.player.velocityY = 0
         game.parallaxOffset = 0
         game.lastParasiteSpawnDistance = 0 // Initialize lastParasiteSpawnDistance
         game.playerMovingToHospital = false // Reset this flag
@@ -264,11 +267,13 @@ export default function GamePage() {
         setTimeLeft(timeRemaining)
 
         if (!game.playerMovingToHospital) {
-          game.parallaxOffset += 3
+          // Move the ground/parallax faster according to LAND_SPEED
+          game.parallaxOffset += 3 * LAND_SPEED
           game.hospital.x = canvas.width + 500 // Keep hospital off-screen during gameplay
           game.hospital.y = GROUND_Y
         } else {
-          game.player.x += 5
+          // Move player toward hospital faster when LAND_SPEED > 1
+          game.player.x += 5 * LAND_SPEED
 
           if (
             game.player.x < game.hospital.x + 120 &&
@@ -293,23 +298,24 @@ export default function GamePage() {
               y: GROUND_Y,
               width: 30,
               height: 24,
-              speed: 5 + (game.score / 1000) * 2,
+              // Scale parasite forward speed with LAND_SPEED so they match ground motion
+              speed: (5 + (game.score / 1000) * 2) * LAND_SPEED,
             })
             game.lastParasiteSpawnDistance = game.parallaxOffset
           }
         }
 
-        // Update player
-        game.velocityY += GRAVITY
-        game.player.y += game.velocityY
+  // Update player
+  game.player.velocityY += GRAVITY
+  game.player.y += game.player.velocityY
 
         if (game.player.y >= GROUND_Y) {
           game.player.y = GROUND_Y
-          game.velocityY = 0
+          game.player.velocityY = 0
           game.isJumping = false
         }
 
-        game.parasites = game.parasites.filter((parasite) => {
+        game.parasites = game.parasites.filter((parasite: Parasite) => {
           if (game.playerMovingToHospital) return false
 
           parasite.x -= parasite.speed
@@ -328,7 +334,7 @@ export default function GamePage() {
             } else {
               game.player.x = 100
               game.player.y = GROUND_Y
-              game.velocityY = 0
+              game.player.velocityY = 0
               game.parasites = []
               lastSpawnTime = currentTime
             }
@@ -349,7 +355,7 @@ export default function GamePage() {
       }
 
       // Draw parasites
-      game.parasites.forEach((parasite) => {
+        game.parasites.forEach((parasite: Parasite) => {
         drawParasite(ctx, parasite.x, parasite.y)
       })
 
