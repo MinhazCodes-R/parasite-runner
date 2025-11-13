@@ -24,6 +24,11 @@ export default function GamePage() {
   const [timeLeft, setTimeLeft] = useState(30) // Updated initial time state to 30 seconds
   const startTimeRef = useRef<number | null>(null)
 
+  // Refs to avoid frequent re-renders from in-loop updates
+  const gameStateRef = useRef(gameState)
+  const scoreRef = useRef(0)
+  const timeLeftRef = useRef(30)
+
   const gameRef = useRef({
     player: { x: 100, y: 0, width: 30, height: 40, velocityY: 0 },
     parasites: [] as Parasite[],
@@ -170,6 +175,13 @@ export default function GamePage() {
     }
   }
 
+  // Keep refs in sync with React state when those change (infrequent)
+  useEffect(() => {
+    gameStateRef.current = gameState
+    scoreRef.current = score
+    timeLeftRef.current = timeLeft
+  }, [gameState, score, timeLeft])
+
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -185,7 +197,8 @@ export default function GamePage() {
     const keys: { [key: string]: boolean } = {}
     const handleKeyDown = (e: KeyboardEvent) => {
       keys[e.code] = true
-        if (e.code === "Space" && gameState === "playing") {
+      // Check the ref for current game state to avoid stale closures
+      if (e.code === "Space" && gameStateRef.current === "playing") {
         e.preventDefault()
         if (!game.isJumping) {
           game.player.velocityY = JUMP_STRENGTH
@@ -201,7 +214,7 @@ export default function GamePage() {
     window.addEventListener("keydown", handleKeyDown)
     window.addEventListener("keyup", handleKeyUp)
 
-  const TARGET_FPS = 60 // ← CHANGE FRAMERATE HERE
+  const TARGET_FPS = 80 // ← CHANGE FRAMERATE HERE
   const FRAME_DURATION = 1000 / TARGET_FPS // ms per frame (e.g., ~16.67ms for 60 FPS)
   // LAND_SPEED multiplies all ground/land movement: parallax, parasite speed and
   // the player's movement toward the hospital. Increase >1 to speed up land motion.
@@ -209,10 +222,13 @@ export default function GamePage() {
 
     // Mouse click for menu
     const handleCanvasClick = () => {
-      if (gameState === "menu") {
+      if (gameStateRef.current === "menu") {
         setGameState("playing")
+        gameStateRef.current = "playing"
         startTimeRef.current = Date.now()
-  setTimeLeft(30) // Updated initial time to 30 seconds
+        timeLeftRef.current = 30
+        scoreRef.current = 0
+        setTimeLeft(30)
         setScore(0)
         game.lives = 3
         game.score = 0
@@ -220,12 +236,13 @@ export default function GamePage() {
         game.parasites = []
         game.player.x = 100
         game.player.y = GROUND_Y
-  game.player.velocityY = 0
+        game.player.velocityY = 0
         game.parallaxOffset = 0
         game.lastParasiteSpawnDistance = 0 // Initialize lastParasiteSpawnDistance
         game.playerMovingToHospital = false // Reset this flag
-      } else if (gameState === "gameOver" || gameState === "won") {
+      } else if (gameStateRef.current === "gameOver" || gameStateRef.current === "won") {
         setGameState("menu")
+        gameStateRef.current = "menu"
       }
     }
 
@@ -236,11 +253,14 @@ export default function GamePage() {
 
     // Frame limiter setup
     let lastFrameTime = performance.now()
+    // UI throttling: update React state at most every `UI_UPDATE_INTERVAL_MS`
+    const UI_UPDATE_INTERVAL_MS = 120
+    let lastUiUpdate = performance.now()
 
     const gameLoop = (now: number) => {
       // Cap the update/render rate to TARGET_FPS using elapsed time
       const elapsed = now - lastFrameTime
-      if (elapsed < (FRAME_DURATION-5)) {
+      if (elapsed < (FRAME_DURATION)) {
         // Not enough time passed yet for the next frame
         animationId = requestAnimationFrame(gameLoop)
         return
@@ -252,7 +272,9 @@ export default function GamePage() {
       drawBackground(ctx, game.parallaxOffset, canvas.width, canvas.height)
 
 
-      if (gameState === "playing") {
+      const currentGameState = gameStateRef.current
+
+      if (currentGameState === "playing") {
         if (!startTimeRef.current) startTimeRef.current = Date.now()
         const currentTime = Date.now()
         const elapsedSeconds = Math.floor((currentTime - startTimeRef.current) / 1000)
@@ -264,7 +286,8 @@ export default function GamePage() {
           game.hospital.y = canvas.height * 0.6
         }
 
-        setTimeLeft(timeRemaining)
+        // write to ref first to avoid immediate re-render
+        timeLeftRef.current = timeRemaining
 
         if (!game.playerMovingToHospital) {
           // Move the ground/parallax faster according to LAND_SPEED
@@ -286,6 +309,7 @@ export default function GamePage() {
 
           if (game.player.x > canvas.width + 50) {
             setGameState("won")
+            gameStateRef.current = "won"
             return
           }
         }
@@ -327,9 +351,11 @@ export default function GamePage() {
             game.player.y + 40 > parasite.y
           ) {
             game.lives--
-            setScore(game.score)
+            // update scoreRef instead of forcing a React update
+            scoreRef.current = game.score
             if (game.lives <= 0) {
               setGameState("gameOver")
+              gameStateRef.current = "gameOver"
               return false
             } else {
               game.player.x = 100
@@ -343,9 +369,9 @@ export default function GamePage() {
           return parasite.x > -50
         })
 
-        // Score increases with time and distance
+        // Score increases with time and distance (update ref only)
         game.score = Math.floor(game.parallaxOffset / 2 + (30 - timeRemaining) * 10)
-        setScore(game.score)
+        scoreRef.current = game.score
       }
 
       // Draw player
@@ -364,14 +390,15 @@ export default function GamePage() {
         drawHospital(ctx, game.hospital.x, game.hospital.y)
       }
 
-      // Draw UI
+      // Draw UI (use refs for latest values to avoid reading stale React state)
       ctx.fillStyle = "#2C3E50"
       ctx.font = "bold 20px Arial"
-      ctx.fillText(`Score: ${score}`, 20, 30)
-      ctx.fillText(`Time: ${timeLeft}s`, canvas.width - 150, 30)
+      ctx.fillText(`Score: ${scoreRef.current}`, 20, 30)
+      ctx.fillText(`Time: ${timeLeftRef.current}s`, canvas.width - 150, 30)
 
-      // Draw game state messages
-      if (gameState === "menu") {
+      // Draw game state messages (read current value from ref so canvas reacts instantly)
+      const drawState = gameStateRef.current
+      if (drawState === "menu") {
         ctx.fillStyle = "rgba(0, 0, 0, 0.5)"
         ctx.fillRect(0, 0, canvas.width, canvas.height)
 
@@ -384,7 +411,7 @@ export default function GamePage() {
         ctx.fillText("Reach the hospital in 30 seconds!", canvas.width / 2, canvas.height / 2) // Updated menu text to reflect 30 second timer
         ctx.fillText("Press SPACE to jump", canvas.width / 2, canvas.height / 2 + 50)
         ctx.fillText("Click to start", canvas.width / 2, canvas.height / 2 + 100)
-      } else if (gameState === "gameOver") {
+      } else if (drawState === "gameOver") {
         ctx.fillStyle = "rgba(0, 0, 0, 0.5)"
         ctx.fillRect(0, 0, canvas.width, canvas.height)
 
@@ -397,7 +424,7 @@ export default function GamePage() {
         ctx.font = "24px Arial"
         ctx.fillText(`Final Score: ${score}`, canvas.width / 2, canvas.height / 2 + 30)
         ctx.fillText("Click to return to menu", canvas.width / 2, canvas.height / 2 + 80)
-      } else if (gameState === "won") {
+      } else if (drawState === "won") {
         ctx.fillStyle = "rgba(0, 0, 0, 0.5)"
         ctx.fillRect(0, 0, canvas.width, canvas.height)
 
@@ -413,6 +440,15 @@ export default function GamePage() {
       }
 
       ctx.textAlign = "left"
+
+      // Throttle React updates to reduce re-renders
+      const nowMs = performance.now()
+      if (nowMs - lastUiUpdate >= UI_UPDATE_INTERVAL_MS) {
+        lastUiUpdate = nowMs
+        setScore(scoreRef.current)
+        setTimeLeft(timeLeftRef.current)
+      }
+
       animationId = requestAnimationFrame(gameLoop)
     }
 
@@ -426,7 +462,7 @@ export default function GamePage() {
       canvas.removeEventListener("click", handleCanvasClick)
       cancelAnimationFrame(animationId)
     }
-  }, [gameState, score])
+  }, [])
 
   return (
     <main className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-green-50">
