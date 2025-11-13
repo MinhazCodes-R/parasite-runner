@@ -21,13 +21,16 @@ export default function GamePage() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [gameState, setGameState] = useState<"menu" | "playing" | "gameOver" | "won">("menu")
   const [score, setScore] = useState(0)
-  const [timeLeft, setTimeLeft] = useState(30) // Updated initial time state to 30 seconds
+  // Game duration (seconds). Change to 10 for faster testing.
+  const GAME_DURATION = 30
+  const [timeLeft, setTimeLeft] = useState(GAME_DURATION) // Updated initial time state
   const startTimeRef = useRef<number | null>(null)
 
   // Refs to avoid frequent re-renders from in-loop updates
   const gameStateRef = useRef(gameState)
   const scoreRef = useRef(0)
-  const timeLeftRef = useRef(30)
+  const timeLeftRef = useRef(GAME_DURATION)
+  
 
   const gameRef = useRef({
     player: { x: 100, y: 0, width: 30, height: 40, velocityY: 0 },
@@ -41,6 +44,7 @@ export default function GamePage() {
     lastParasiteSpawnDistance: 0,
     winStartTime: 0,
     playerMovingToHospital: false,
+    confetti: [] as { x: number; y: number; vx: number; vy: number; color: string; size: number }[],
   })
 
   const drawStickFigure = (ctx: CanvasRenderingContext2D, x: number, y: number) => {
@@ -129,6 +133,32 @@ export default function GamePage() {
     ctx.moveTo(x, y - 180)
     ctx.lineTo(x, y - 140)
     ctx.stroke()
+  }
+
+  // Draw text along an arc (centered on cx,cy with given radius)
+  const drawArcText = (
+    ctx: CanvasRenderingContext2D,
+    text: string,
+    cx: number,
+    cy: number,
+    radius: number,
+    totalArc = Math.PI * 0.8
+  ) => {
+    if (!text) return
+    const chars = text.split("")
+    const len = chars.length
+    const startAngle = Math.PI - totalArc / 2 // left-most angle
+    ctx.textBaseline = "middle"
+    for (let i = 0; i < len; i++) {
+      const angle = startAngle + (i * (totalArc / Math.max(1, len - 1)))
+      const x = cx + radius * Math.cos(angle)
+      const y = cy + radius * Math.sin(angle)
+      ctx.save()
+      ctx.translate(x, y)
+      ctx.rotate(angle + Math.PI / 2)
+      ctx.fillText(chars[i], 0, 0)
+      ctx.restore()
+    }
   }
 
   const drawBackground = (ctx: CanvasRenderingContext2D, offset: number, width: number, height: number) => {
@@ -226,9 +256,9 @@ export default function GamePage() {
         setGameState("playing")
         gameStateRef.current = "playing"
         startTimeRef.current = Date.now()
-        timeLeftRef.current = 30
+        timeLeftRef.current = GAME_DURATION
         scoreRef.current = 0
-        setTimeLeft(30)
+        setTimeLeft(GAME_DURATION)
         setScore(0)
         game.lives = 3
         game.score = 0
@@ -241,6 +271,10 @@ export default function GamePage() {
         game.lastParasiteSpawnDistance = 0 // Initialize lastParasiteSpawnDistance
         game.playerMovingToHospital = false // Reset this flag
       } else if (gameStateRef.current === "gameOver" || gameStateRef.current === "won") {
+        // reset confetti and other endscreen state when returning to menu
+        game.confetti = []
+        game.hospital.x = 0
+        game.hospital.y = 0
         setGameState("menu")
         gameStateRef.current = "menu"
       }
@@ -278,7 +312,7 @@ export default function GamePage() {
         if (!startTimeRef.current) startTimeRef.current = Date.now()
         const currentTime = Date.now()
         const elapsedSeconds = Math.floor((currentTime - startTimeRef.current) / 1000)
-        const timeRemaining = Math.max(0, 30 - elapsedSeconds) // Updated timer calculation from 10 to 30 seconds
+        const timeRemaining = Math.max(0, GAME_DURATION - elapsedSeconds)
 
         if (timeRemaining === 0 && !game.playerMovingToHospital) {
           game.playerMovingToHospital = true
@@ -308,9 +342,25 @@ export default function GamePage() {
           }
 
           if (game.player.x > canvas.width + 50) {
+            // initialize win state and confetti
             setGameState("won")
             gameStateRef.current = "won"
-            return
+            game.winStartTime = Date.now()
+            // center hospital for end screen
+            game.hospital.x = canvas.width / 2
+            game.hospital.y = canvas.height * 0.6
+            // generate confetti
+            const CONFETTI_COUNT = 80
+            const COLORS = ["#E74C3C", "#F1C40F", "#2ECC71", "#3498DB", "#9B59B6"]
+            game.confetti = Array.from({ length: CONFETTI_COUNT }, () => ({
+              x: canvas.width / 2 + (Math.random() - 0.5) * 160,
+              y: canvas.height * 0.35 + Math.random() * 40,
+              vx: (Math.random() - 0.5) * 2.5,
+              vy: Math.random() * 2 + 1,
+              color: COLORS[Math.floor(Math.random() * COLORS.length)],
+              size: 4 + Math.random() * 6,
+            }))
+            // continue the frame so the canvas drawing code runs and rAF is scheduled
           }
         }
 
@@ -370,7 +420,7 @@ export default function GamePage() {
         })
 
         // Score increases with time and distance (update ref only)
-        game.score = Math.floor(game.parallaxOffset / 2 + (30 - timeRemaining) * 10)
+        game.score = Math.floor(game.parallaxOffset / 2 + (GAME_DURATION - timeRemaining) * 10)
         scoreRef.current = game.score
       }
 
@@ -408,7 +458,7 @@ export default function GamePage() {
         ctx.fillText("VIRUS RUNNER", canvas.width / 2, canvas.height / 2 - 60)
 
         ctx.font = "24px Arial"
-        ctx.fillText("Reach the hospital in 30 seconds!", canvas.width / 2, canvas.height / 2) // Updated menu text to reflect 30 second timer
+        ctx.fillText(`Reach the hospital in ${GAME_DURATION} seconds!`, canvas.width / 2, canvas.height / 2)
         ctx.fillText("Press SPACE to jump", canvas.width / 2, canvas.height / 2 + 50)
         ctx.fillText("Click to start", canvas.width / 2, canvas.height / 2 + 100)
       } else if (drawState === "gameOver") {
@@ -425,18 +475,49 @@ export default function GamePage() {
         ctx.fillText(`Final Score: ${score}`, canvas.width / 2, canvas.height / 2 + 30)
         ctx.fillText("Click to return to menu", canvas.width / 2, canvas.height / 2 + 80)
       } else if (drawState === "won") {
-        ctx.fillStyle = "rgba(0, 0, 0, 0.5)"
+        // Hospital endscreen: draw a centered hospital and falling confetti
+        // Dim background
+        ctx.fillStyle = "rgba(0, 0, 0, 0.45)"
         ctx.fillRect(0, 0, canvas.width, canvas.height)
 
-        ctx.fillStyle = "#2ECC71"
-        ctx.font = "bold 48px Arial"
-        ctx.textAlign = "center"
-        ctx.fillText("YOU REACHED THE HOSPITAL!", canvas.width / 2, canvas.height / 2 - 40)
+        // Draw hospital centered (bigger feel by drawing at hospital coords)
+        drawHospital(ctx, game.hospital.x, game.hospital.y)
 
+        // Update and draw confetti
+        if (game.confetti && game.confetti.length) {
+          for (let i = 0; i < game.confetti.length; i++) {
+            const p = game.confetti[i]
+            // simple physics
+            p.x += p.vx
+            p.y += p.vy
+            p.vy += 0.06
+
+            // draw piece
+            ctx.fillStyle = p.color
+            ctx.beginPath()
+            ctx.fillRect(p.x, p.y, p.size, p.size)
+
+            // recycle when off bottom after some drift
+            if (p.y > canvas.height + 20) {
+              p.x = canvas.width / 2 + (Math.random() - 0.5) * 160
+              p.y = game.hospital.y - 160 + Math.random() * 40
+              p.vx = (Math.random() - 0.5) * 2.5
+              p.vy = Math.random() * 2 + 1
+            }
+          }
+        }
+
+        // Draw regular centered win title below the hospital
         ctx.fillStyle = "#FFFFFF"
-        ctx.font = "24px Arial"
-        ctx.fillText(`Final Score: ${score}`, canvas.width / 2, canvas.height / 2 + 30)
-        ctx.fillText("Click to return to menu", canvas.width / 2, canvas.height / 2 + 80)
+        ctx.font = "bold 28px Arial"
+        ctx.textAlign = "center"
+        const titleY = game.hospital.y + 40
+        ctx.fillText("YOU REACHED THE HOSPITAL!", canvas.width / 2, titleY)
+
+        // Draw final score and instruction below the title
+        ctx.font = "22px Arial"
+        ctx.fillText(`Final Score: ${scoreRef.current}`, canvas.width / 2, titleY + 32)
+        ctx.fillText("Click to return to menu", canvas.width / 2, titleY + 64)
       }
 
       ctx.textAlign = "left"
@@ -476,7 +557,7 @@ export default function GamePage() {
         />
         <div className="text-center text-gray-700">
           <p className="text-lg font-semibold">Avoid the viruses and reach the hospital!</p>
-          <p className="text-sm">Press SPACE to jump • Reach the hospital within 30 seconds to win</p>{" "}
+          <p className="text-sm">Press SPACE to jump • Reach the hospital within {GAME_DURATION} seconds to win</p>{" "}
           {/* Updated instructions to reflect 30 second timer */}
         </div>
       </div>
