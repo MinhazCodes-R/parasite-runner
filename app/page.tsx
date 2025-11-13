@@ -201,6 +201,9 @@ export default function GamePage() {
     window.addEventListener("keydown", handleKeyDown)
     window.addEventListener("keyup", handleKeyUp)
 
+    const TARGET_FPS = 60;                       // ← CHANGE FRAMERATE HERE
+    const FRAME_DURATION = 1000 / (TARGET_FPS);    // e.g., 33ms for 30 FPS
+
     // Mouse click for menu
     const handleCanvasClick = () => {
       if (gameState === "menu") {
@@ -228,9 +231,23 @@ export default function GamePage() {
     let animationId: number
     let lastSpawnTime = 0
 
-    const gameLoop = () => {
+    // Frame limiter setup
+    let lastFrameTime = performance.now()
+
+    const gameLoop = (now: number) => {
+      // Cap the update/render rate to TARGET_FPS using elapsed time
+      const elapsed = now - lastFrameTime
+      if (elapsed < (FRAME_DURATION-5)) {
+        // Not enough time passed yet for the next frame
+        animationId = requestAnimationFrame(gameLoop)
+        return
+      }
+
+      // Align lastFrameTime to reduce drift over long runs
+      lastFrameTime = now - (elapsed % FRAME_DURATION)
       // Draw background
       drawBackground(ctx, game.parallaxOffset, canvas.width, canvas.height)
+
 
       if (gameState === "playing") {
         if (!startTimeRef.current) startTimeRef.current = Date.now()
@@ -393,7 +410,9 @@ export default function GamePage() {
       animationId = requestAnimationFrame(gameLoop)
     }
 
+    // Start the loop with the rAF timestamp-aware callback
     animationId = requestAnimationFrame(gameLoop)
+
 
     return () => {
       window.removeEventListener("keydown", handleKeyDown)
